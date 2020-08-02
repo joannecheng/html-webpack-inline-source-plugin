@@ -119,7 +119,8 @@ HtmlWebpackInlineSourcePlugin.prototype.processTag = function (compilation, rege
     if (compilation.assets[assetName] !== undefined) {
       var updatedSource = this.resolveSourceMaps(compilation, assetName, asset);
       tag.innerHTML = (tag.tagName === 'script') ? updatedSource.replace(/(<)(\/script>)/g, '\\x3C$2') : updatedSource;
-    }else{
+    }
+    else {
       return preTag;
     }
   }

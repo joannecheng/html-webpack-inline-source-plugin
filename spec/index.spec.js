@@ -7,6 +7,7 @@ var rm_rf = require('rimraf');
 var ExtractTextPlugin = require('extract-text-webpack-plugin');
 var HtmlWebpackPlugin = require('html-webpack-plugin');
 var HtmlWebpackInlineSourcePlugin = require('../');
+var WebpackRecompilationSimulator = require('webpack-recompilation-simulator');
 
 var OUTPUT_DIR = path.join(__dirname, '../dist');
 
@@ -186,5 +187,59 @@ describe('HtmlWebpackInlineSourcePlugin', function () {
         done();
       });
     });
+  });
+
+  fit('should embed source and recompile the html file when JS file changes', function (done) {
+    var entryPath = path.join(__dirname, 'fixtures', 'entry.js');
+    var template = path.join(__dirname, 'fixtures', "index_template.html");
+    var compiler = webpack({
+      entry: entryPath,
+      mode: "development",
+      output: {
+        filename: 'bin/app.js',
+        path: path.join(__dirname, 'spec_dist')
+      },
+      module: {
+        rules: [{ test: /\.css$/, use: ExtractTextPlugin.extract({
+          fallback: 'style-loader',
+          use: 'css-loader'
+        })}]
+      },
+      plugins: [
+        new ExtractTextPlugin('style.css'),
+        new HtmlWebpackPlugin({
+          template: path.join(__dirname, 'fixtures', "index_template.html"),
+          inlineSource: '.(js|css)$'
+        }),
+        new HtmlWebpackInlineSourcePlugin(HtmlWebpackPlugin)
+      ]
+    });
+    var webpackSimulator = new WebpackRecompilationSimulator(compiler);
+    webpackSimulator.addTestFile(entryPath);
+    webpackSimulator.addTestFile(path.join(__dirname, 'fixtures', 'test.css'));
+    webpackSimulator.startWatching()
+      .then((stats) => {
+        // Simulate a change to the main.js file
+        webpackSimulator.simulateFileChange(entryPath, {
+          footer: '/* Add a footer*/'
+        });
+        // Wait until webpack detects the file change and compiles again
+        return webpackSimulator.waitForWatchRunComplete();
+      })
+      .then((stats) => {
+        expect(stats.compilation.errors).toEqual([]);
+
+        var htmlFile = path.resolve(__dirname, 'spec_dist', 'index.html');
+        fs.readFile(htmlFile, 'utf8', function (er, data) {
+          var $ = cheerio.load(data);
+          expect($('script').html()).toContain('.embedded.source');
+          expect($('script').html()).toContain('Add a footer');
+        })
+
+      })
+      .then(() => {
+        done()
+        return webpackSimulator.stopWatching();
+      })
   });
 });
